@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>資安小園丁：數據灌溉計畫</title>
+    <style>
+        :root {
+            --primary-color: #00bcd4; /* 清爽藍 */
+            --secondary-color: #ff9800; /* 暖陽橘 */
+            --danger-color: #ff5252;
+            --success-color: #4caf50; /* 草地綠 */
+            --bg-color: #e0f7fa; /* 天空藍背景 */
+            --panel-bg: #ffffff;
+            --text-color: #37474f;
+            --border-radius: 20px;
+        }
+
+        * {
+            box-sizing: border-box;
+            font-family: 'Gen Jyuu Gothic', 'Microsoft JhengHei', sans-serif; /* 圓體字更活潑 */
+            user-select: none;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            background-image: radial-gradient(#ffffff 20%, transparent 20%), radial-gradient(#ffffff 20%, transparent 20%);
+            background-size: 20px 20px;
+            background-position: 0 0, 10px 10px;
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        #game-container {
+            width: 90%;
+            max-width: 1000px;
+            height: 90vh;
+            background-color: var(--panel-bg);
+            border: 5px solid #81d4fa;
+            border-radius: var(--border-radius);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            box-shadow: 0 10px 25px rgba(0, 188, 212, 0.3);
+            overflow: hidden;
+        }
+
+        /* --- HUD (抬頭顯示器) --- */
+        #hud {
+            display: flex;
+            justify-content: space-between;
+            padding: 15px 25px;
+            background: #b2ebf2;
+            border-bottom: 3px solid #81d4fa;
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #006064;
+        }
+
+        .stat-box {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #hp-bar-container {
+            width: 200px;
+            height: 25px;
+            background-color: #fff;
+            border-radius: 15px;
+            overflow: hidden;
+            border: 2px solid #81d4fa;
+        }
+
+        #hp-bar {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #ffcdd2 0%, #ef5350 100%); /* 紅色愛心血條 */
+            transition: width 0.3s ease;
+        }
+
+        #score-display { color: var(--secondary-color); }
+        #progress-display { color: var(--success-color); }
+
+        /* --- 視覺花園區 (Garden Area) --- */
+        #battle-stage {
+            height: 40%;
+            position: relative;
+            background: linear-gradient(to bottom, #4fc3f7, #b3e5fc); /* 藍天 */
+            overflow: hidden;
+            border-bottom: 8px solid #81c784; /* 草地邊界 */
+        }
+
+        /* 草地裝飾 */
+        #battle-stage::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 30px;
+            background: #66bb6a; /* 草地 */
+            border-top: 5px solid #43a047;
+            border-radius: 50% 50% 0 0 / 10px 10px 0 0; 
+        }
+
+        .character {
+            position: absolute;
+            bottom: 25px; /* 站在草地上 */
+            width: 100px;
+            height: 100px;
+            font-size: 70px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* 彈性動畫 */
+            filter: drop-shadow(0 5px 5px rgba(0,0,0,0.2));
+            z-index: 10;
+        }
+
+        #hero { left: 60px; }
+        #enemy { right: 60px; transform: scaleX(-1); }
+
+        .projectile {
+            position: absolute;
+            bottom: 60px;
+            font-size: 30px;
+            display: none;
+            z-index: 5;
+        }
+
+        /* 動畫類別 */
+        .shoot-anim { animation: shootRight 0.6s ease-in forwards; } /* 拋物線 */
+        .attack-anim { animation: shootLeft 0.6s linear forwards; }
+        .hit-anim { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+        .grow-anim { animation: growUp 0.6s ease-out; }
+        .fade-out { animation: fadeOut 0.5s forwards; }
+        .spawn-anim { animation: spawnIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+
+        @keyframes shootRight { 
+            0% { left: 140px; bottom: 60px; opacity: 1; transform: rotate(0deg); } 
+            50% { bottom: 120px; } /* 拋物線頂點 */
+            100% { left: 85%; bottom: 60px; opacity: 0; transform: rotate(180deg); } 
+        }
+        @keyframes shootLeft { 0% { right: 140px; opacity: 1; } 100% { right: 85%; opacity: 0; } }
+        @keyframes shake { 10%, 90% { transform: translate3d(-2px, 0, 0) rotate(-5deg); } 20%, 80% { transform: translate3d(4px, 0, 0) rotate(5deg); } 30%, 50%, 70% { transform: translate3d(-6px, 0, 0) rotate(-5deg); } 40%, 60% { transform: translate3d(6px, 0, 0) rotate(5deg); } }
+        @keyframes fadeOut { to { opacity: 0; transform: scale(0); } }
+        @keyframes spawnIn { from { opacity: 0; transform: scale(0) scaleX(-1); } to { opacity: 1; transform: scale(1) scaleX(-1); } }
+        @keyframes growUp { 0% { transform: scale(1); } 50% { transform: scale(1.4); filter: brightness(1.2); } 100% { transform: scale(1); } }
+
+        /* --- 答題區 --- */
+        #quiz-area {
+            flex: 1;
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            background: #fff;
+        }
+
+        #question-text {
+            font-size: 1.6rem;
+            margin-bottom: 25px;
+            line-height: 1.5;
+            padding: 20px;
+            background: #e1f5fe;
+            border-left: 8px solid var(--primary-color);
+            border-radius: 10px;
+            color: #01579b;
+        }
+
+        .options-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .option-btn {
+            background: #fff;
+            border: 3px solid #b3e5fc;
+            color: #555;
+            padding: 18px;
+            font-size: 1.2rem;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: left;
+            position: relative;
+            font-weight: bold;
+            box-shadow: 0 4px 0 #b3e5fc;
+        }
+
+        .option-btn:hover {
+            background: #e1f5fe;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 0 #81d4fa;
+        }
+
+        .option-btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 0 0;
+        }
+
+        .option-btn.correct { background: var(--success-color); border-color: #388e3c; color: white; box-shadow: 0 4px 0 #2e7d32; }
+        .option-btn.wrong { background: var(--danger-color); border-color: #d32f2f; color: white; opacity: 0.8; box-shadow: 0 4px 0 #c62828; }
+
+        /* --- 彈出視窗 (開始/結束/回饋) --- */
+        .modal {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.95); /* 改為亮色背景 */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .modal h1 { font-size: 3.5rem; color: var(--primary-color); margin-bottom: 15px; text-shadow: 2px 2px 0px #b2ebf2; }
+        .modal h2 { font-size: 2.2rem; margin-bottom: 20px; color: var(--text-color); }
+        .modal p { font-size: 1.3rem; line-height: 1.6; margin-bottom: 30px; color: #666; }
+        
+        .start-btn {
+            padding: 15px 60px;
+            font-size: 1.6rem;
+            background: var(--secondary-color);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 6px 0 #f57c00;
+            transition: transform 0.1s;
+        }
+        .start-btn:hover { transform: scale(1.05); }
+        .start-btn:active { transform: scale(0.95); box-shadow: 0 2px 0 #f57c00; transform: translateY(4px); }
+
+        .hidden { display: none !important; }
+
+        #feedback-modal h2.correct-title { color: var(--success-color); }
+        #feedback-modal h2.wrong-title { color: var(--danger-color); }
+        #explanation-text { background: #fff3e0; padding: 25px; border-radius: 15px; max-width: 80%; margin: 20px auto; border: 2px dashed var(--secondary-color); color: #5d4037; text-align: left;}
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- HUD -->
+    <div id="hud">
+        <div class="stat-box">
+            <span>健康度 ❤️</span>
+            <div id="hp-bar-container"><div id="hp-bar"></div></div>
+        </div>
+        <div class="stat-box">
+            進度: <span id="progress-display">1 / 20</span>
+        </div>
+        <div class="stat-box">
+            養分: <span id="score-display">0</span>
+        </div>
+    </div>
+
+    <!-- 花園畫面 -->
+    <div id="battle-stage">
+        <div id="hero" class="character">🌱</div>
+        <div id="hero-bullet" class="projectile">💧</div> <!-- 水滴 -->
+        
+        <div id="enemy" class="character">🐛</div>
+        <div id="enemy-bullet" class="projectile">🕸️</div> <!-- 網子/病毒 -->
+    </div>
+
+    <!-- 答題區 -->
+    <div id="quiz-area">
+        <div id="question-text">題目載入中...</div>
+        <div class="options-grid" id="options-container">
+            <!-- 選項按鈕由 JS 產生 -->
+        </div>
+    </div>
+
+    <!-- 1. 開始畫面 -->
+    <div id="start-screen" class="modal">
+        <h1>🌱 資安小園丁</h1>
+        <h2>數據灌溉計畫</h2>
+        <p>歡迎來到數據花園！<br>這裡有些討厭的「數位害蟲」想偷吃資料。<br>運用你的資安知識灌溉種子，讓它長成大樹吧！</p>
+        <button class="start-btn" onclick="game.start()">開始種植</button>
+    </div>
+
+    <!-- 2. 錯誤回饋畫面 -->
+    <div id="feedback-modal" class="modal hidden">
+        <h2 id="feedback-title">哎呀！種子受傷了</h2>
+        <div id="explanation-text">這裡會顯示正確觀念解釋...</div>
+        <button class="start-btn" onclick="game.nextQuestion()">繼續嘗試</button>
+    </div>
+
+    <!-- 3. 結束畫面 -->
+    <div id="end-screen" class="modal hidden">
+        <h1>花園驗收</h1>
+        <h2 id="final-score">獲得養分: 0</h2>
+        <p id="final-stats">植物健康度: 0%</p>
+        <div id="persona-text" style="font-size: 1.5rem; color: var(--success-color); font-weight: bold; margin-bottom: 30px;">
+            稱號評估中...
+        </div>
+        <button class="start-btn" onclick="game.start()">再種一次</button>
+    </div>
+</div>
+
+<script>
+/* 【題庫設計】 (保持原題庫，內容不變) */
+const fullQuestionBank = [
+    // --- A. 什麼是個人資料 (8) ---
+    { q: "下列何者「不屬於」可以直接或間接識別個人的資料？", options: ["身分證字號", "指紋", "今天的天氣", "病歷"], a: 2, exp: "天氣是自然現象，無法用來識別特定自然人。" },
+    { q: "小明的「病歷、醫療、基因」資料，在個資法中屬於哪一類？", options: ["一般個資", "特種(敏感性)個資", "公開個資", "非個資"], a: 1, exp: "病歷、醫療、基因、性生活、犯罪前科屬於特種個資，受更嚴格保護。" },
+    { q: "「自然人」是指什麼？", options: ["具有生命的人類", "公司行號", "野生動物", "AI機器人"], a: 0, exp: "個資法保護的是「自然人」（活著的人），不包含法人（公司）或過世的人。" },
+    { q: "在網路上公開別人的「車牌號碼」搭配「車主姓名」，這算個資嗎？", options: ["算，因為能識別特定人", "不算，車牌是公開的", "不算，只有身分證才算", "看心情"], a: 0, exp: "當資料透過對照、組合、連結能識別特定人時，即屬個資。" },
+    { q: "下列哪一項屬於生物特徵個資？", options: ["電話號碼", "虹膜與聲紋", "電子郵件", "居住地址"], a: 1, exp: "虹膜、指紋、聲紋、臉部特徵等屬於生物特徵個資。" },
+    { q: "小華在IG上貼出班上同學的「姓名」與「不及格的考卷分數」，是否有個資疑慮？", options: ["沒有，這是言論自由", "有，這屬於社會活動", "有，這洩漏了同學的個資", "沒有，分數不是個資"], a: 2, exp: "姓名加上社會活動（考試成績）可識別特定人，未經同意公開有個資外洩疑慮。" },
+    { q: "個資法主要保護的對象是？", options: ["政府機關", "企業", "生存之自然人", "所有生物"], a: 2, exp: "個資法第2條：個人指生存之自然人。" },
+    { q: "老師在課堂點名「陳大文」，這算是個資利用嗎？", options: ["算，但符合教學特定目的", "不算，因為大家都在聽", "算違法，老師不能叫名字", "不算，名字不是個資"], a: 0, exp: "這屬於個資利用，但在學校教育的特定目的範圍內是合法的。" },
+    // --- B. 蒐集、處理、利用 (8) ---
+    { q: "填寫抽獎券時，店家要求填寫身分證字號，這符合個資法的哪個原則？", options: ["誠實信用原則", "比例原則（蒐集需適當且不過度）", "隨機原則", "強迫原則"], a: 1, exp: "抽獎通常只需聯絡方式，蒐集身分證字號違反「比例原則」，屬於過度蒐集。" },
+    { q: "學校為了建立學籍資料而蒐集你的地址，這屬於個資法中的哪一階段？", options: ["蒐集", "處理", "利用", "銷毀"], a: 0, exp: "取得資料的行為稱為「蒐集」。" },
+    { q: "某補習班未經你同意，打電話推銷課程，因為他們買了畢業紀念冊。這違反了？", options: ["目的外利用", "合法蒐集", "學術研究", "公共利益"], a: 0, exp: "蒐集畢業紀念冊的目的是紀念，拿來推銷屬於「目的外利用」，且未經當事人同意。" },
+    { q: "你在網購平台註冊會員，平台將你的資料賣給保險公司。這行為？", options: ["合法，這叫大數據", "違法，未經同意特定目的外利用", "合法，平台有權利", "違法，除非保險公司有付錢"], a: 1, exp: "未經使用者同意，將資料提供給第三方（保險公司）屬於違法的目的外利用。" },
+    { q: "當你向網站請求「刪除我的帳號與所有資料」時，這是行使個資法的什麼權利？", options: ["請求停止蒐集、處理或利用", "請求閱覽", "請求製給複製本", "請求補充"], a: 0, exp: "當事人有權請求刪除、停止處理或利用其個資。" },
+    { q: "下列哪種情況「不需要」當事人同意即可蒐集個資？", options: ["路邊問卷調查", "加入會員", "增進公共利益（如防疫疫調）", "補習班招生"], a: 2, exp: "依個資法，為增進公共利益（如防疫、防災）時，公務機關可不經同意蒐集個資。" },
+    { q: "「處理」個資的定義包含什麼？", options: ["只有看一看", "記錄、輸入、儲存、編輯", "只有刪除", "只有列印"], a: 1, exp: "處理包含建立檔案、輸入、儲存、編輯、更正、複製等行為。" },
+    { q: "若你發現某網站個資外洩，你可以向誰投訴？", options: ["只能自認倒楣", "網站管理員或相關主管機關", "路人", "便利商店店員"], a: 1, exp: "應向業者反映，或向主管機關檢舉。" },
+    // --- C. 個資外洩原因與後果 (8) ---
+    { q: "下列哪一個行為「最容易」導致個資外洩？", options: ["定期更換密碼", "在釣魚網站輸入帳號密碼", "安裝防毒軟體", "不隨意點擊連結"], a: 1, exp: "釣魚網站會偽裝成真網站，誘騙使用者輸入帳密，是常見的外洩原因。" },
+    { q: "這是一種利用人性弱點（如恐懼、好奇）來騙取個資的手法，稱為？", options: ["社交工程", "資料探勘", "雲端運算", "區塊鏈"], a: 0, exp: "社交工程 (Social Engineering) 是利用心理戰術詐騙資料。" },
+    { q: "如果不小心在公用電腦登入 Google 帳號忘記登出，會有什麼後果？", options: ["沒事，電腦會自動登出", "下一個人可以看到你的信件和雲端檔案", "電腦會中毒", "Google 會送你禮物"], a: 1, exp: "忘記登出會導致「未授權存取」，後續使用者可完全控制你的帳號。" },
+    { q: "詐騙集團打電話說「你網購設定錯誤需解除分期」，這是為了？", options: ["幫你省錢", "騙取你的銀行帳戶或轉帳", "測試電話通不通", "做售後服務"], a: 1, exp: "這是典型的解除分期付款詐騙，目的是騙取金融個資與金錢。" },
+    { q: "收到簡訊「您的包裹無法投遞，請點擊連結查詢」，這可能是？", options: ["真的包裹", "釣魚簡訊 (Smishing)", "系統錯誤", "好心提醒"], a: 1, exp: "透過簡訊發送惡意連結，誘騙安裝木馬或輸入個資，稱為釣魚簡訊。" },
+    { q: "個資外洩對個人最大的危害通常是？", options: ["電腦變慢", "財產損失與身分被盜用", "網路變快", "收到更多廣告很開心"], a: 1, exp: "個資外洩常導致銀行戶頭被盜領、被冒名申辦門號或信用卡。" },
+    { q: "駭客利用「撞庫攻擊」是指？", options: ["用車撞牆", "嘗試用你洩漏的舊密碼去登入其他網站", "破壞資料庫", "竊取硬碟"], a: 1, exp: "因為很多人習慣多個網站用同一組密碼，駭客會拿A站洩漏的密碼去試B站。" },
+    { q: "如果你的身分證照片外流，可能會發生什麼事？", options: ["被拿去合成搞笑圖", "被冒名申辦手機門號或人頭帳戶", "照片變漂亮", "沒什麼大不了"], a: 1, exp: "身分證正反面影本可用於申辦多項業務，極度危險。" },
+    // --- D. Cookie、數位足跡、追蹤 (10) ---
+    { q: "瀏覽網站時，伺服器存在你電腦裡的小型文字檔，用來記錄偏好的是？", options: ["Cake", "Cookie", "Virus", "Trojan"], a: 1, exp: "Cookie 是網站存放在使用者瀏覽器的一小段文字資訊。" },
+    { q: "哪一種 Cookie 最常被廣告商用來跨網站追蹤你的瀏覽興趣？", options: ["第一方 Cookie", "第三方 Cookie", "巧克力 Cookie", "必要性 Cookie"], a: 1, exp: "第三方 Cookie 由非當前瀏覽網站的業者植入，常用於跨站廣告追蹤。" },
+    { q: "「數位足跡」(Digital Footprint) 是指？", options: ["腳踩在螢幕上的印子", "你在網路上走過、點擊、留言所留下的痕跡", "數位像機的照片", "走路步數紀錄"], a: 1, exp: "凡走過必留下痕跡，包含搜尋紀錄、按讚、貼文、位置資訊等。" },
+    { q: "使用瀏覽器的「無痕模式」或「私密瀏覽」主要功能是？", options: ["讓駭客看不到你", "不讓瀏覽器紀錄你的歷史紀錄與 Cookie", "可以隱形", "上網速度變快"], a: 1, exp: "無痕模式僅是不在「本機」留存紀錄，ISP 和網站端仍可能有紀錄，並非完全隱形。" },
+    { q: "為何我在 A 網站看球鞋，去 B 網站就看到球鞋廣告？", options: ["巧合", "B 網站偷看你的螢幕", "透過再行銷 (Re-marketing) 與 Cookie 追蹤", "電腦有靈性"], a: 2, exp: "這是廣告聯播網透過 Cookie 紀錄你的興趣並投放廣告的結果。" },
+    { q: "若要減少被追蹤，可以定期做什麼動作？", options: ["重灌電腦", "清除瀏覽器 Cookie 與快取", "關閉螢幕", "更換鍵盤"], a: 1, exp: "清除 Cookie 可以切斷部分廣告商對你的識別與追蹤。" },
+    { q: "歐盟的 GDPR 對 Cookie 的規範重點是？", options: ["完全禁止使用", "網站必須事先取得使用者「同意」才能使用追蹤 Cookie", "只能用好吃的 Cookie", "沒有規範"], a: 1, exp: "GDPR 強調使用者的「知情同意權」，必須按下同意才能啟用追蹤。" },
+    { q: "在社群網站上按讚、分享，這些資料屬於？", options: ["主動留下的數位足跡", "被動留下的數位足跡", "不是足跡", "系統錯誤"], a: 0, exp: "使用者有意識地發布內容，屬於主動足跡；IP位址、裝置型號則屬被動足跡。" },
+    { q: "下列何者「不是」Cookie 的主要用途？", options: ["記住購物車內容", "保持登入狀態", "傳播電腦病毒", "追蹤使用者行為"], a: 2, exp: "Cookie 是純文字檔，本身不會執行程式，所以不會傳播病毒。" },
+    { q: "什麼是「被遺忘權」？", options: ["可以忘記帶作業", "要求搜尋引擎移除過時或負面的個人連結", "要求刪除大腦記憶", "政府可以忘記你的稅金"], a: 1, exp: "被遺忘權是指要求移除網路上關於自己的過時、不相關或令人尷尬的資訊連結。" },
+    // --- E. 三不五要與安全行為 (10) ---
+    { q: "資安觀念「三不五要」中的「三不」不包含下列哪項？", options: ["不隨意開啟不明郵件", "不使用盜版軟體", "不上網", "不使用簡單密碼"], a: 2, exp: "不上網是不可能的。「三不」通常指不開不明信件、不點不明連結、不下載不明軟體(或不共用密碼)。" },
+    { q: "設定密碼時，下列哪個習慣最安全？", options: ["用生日當密碼", "12345678", "混合英文大小寫、數字與符號", "寫在便利貼貼在螢幕上"], a: 2, exp: "高強度密碼應包含不同類型的字元組合，且長度足夠。" },
+    { q: "「五要」原則中，關於軟體更新的建議是？", options: ["要關閉自動更新", "要定期更新作業系統與軟體", "要刪除更新檔", "不要理它"], a: 1, exp: "軟體更新通常包含修補資安漏洞，應儘速更新。" },
+    { q: "關於兩步驟驗證 (2FA)，下列敘述何者正確？", options: ["很麻煩，最好關掉", "除了密碼外，還需第二層證明(如簡訊碼)才能登入", "只要有密碼就不需要", "是駭客用的工具"], a: 1, exp: "2FA 大幅提升安全性，即使密碼外洩，駭客無手機驗證碼也無法登入。" },
+    { q: "在公用電腦使用完畢，最重要的動作是？", options: ["關閉螢幕", "拔掉插頭", "確實登出帳號並清除瀏覽資料", "把鍵盤擦乾淨"], a: 2, exp: "登出與清除資料可防止後續使用者竊取個資。" },
+    { q: "若接到自稱警察的電話，說你的帳戶涉案要監管，應該？", options: ["立刻匯款", "掛斷電話，撥打 165 反詐騙專線查證", "大聲哭泣", "告訴他提款卡密碼"], a: 1, exp: "檢警不會要求監管帳戶或要求匯款，應撥打 165 查證。" },
+    { q: "為了保護資料，我們應該定期做什麼？", options: ["資料備份", "把電腦砸了", "更換桌布", "買新手機"], a: 0, exp: "定期備份資料（3-2-1原則）可預防勒索軟體或硬體損壞導致資料遺失。" },
+    { q: "手機安裝 App 時，跳出權限要求（如存取通訊錄），你應該？", options: ["全部按允許", "看都不看直接點", "確認該 App 是否真的需要此功能，否則拒絕", "把手機關機"], a: 2, exp: "例如手電筒 App 要求讀取通訊錄就是不合理的，應拒絕。" },
+    { q: "收到朋友傳來的連結，網址看起來怪怪的 (如 g00gle.com)，應該？", options: ["點進去看看", "跟朋友確認是否被盜帳號，不要點", "轉傳給別人", "幫他報警"], a: 1, exp: "這可能是釣魚連結，朋友帳號可能被盜，應透過其他管道確認。" },
+    { q: "使用免費公共 Wi-Fi 時，應避免進行什麼行為？", options: ["看新聞", "使用網路銀行轉帳或輸入機密個資", "查詢地圖", "聽音樂"], a: 1, exp: "公共 Wi-Fi 容易被側錄封包，應避免傳輸敏感資料。" },
+    // --- F. 校園 × 日常生活情境題 (6) ---
+    { q: "同學小美想借你的手機登入她的 FB，你應該？", options: ["直接借她，無所謂", "借她，並看著她輸入密碼", "借她用無痕視窗，並提醒她用完要登出", "把手機密碼告訴她"], a: 2, exp: "使用無痕視窗可避免帳號紀錄留在你的手機上，保護雙方資安。" },
+    { q: "你在教室撿到隨身碟，想要知道是誰的，最好的做法是？", options: ["插進自己電腦讀取檔案", "交給學務處或資訊組處理", "丟到垃圾桶", "拿回家格式化"], a: 1, exp: "來路不明的隨身碟可能含有病毒，隨意插入電腦會導致感染。" },
+    { q: "有人在 IG 創了一個「全校八卦版」，邀請你匿名投稿同學隱私，你應該？", options: ["盡量爆料", "按讚追蹤", "不參與，並檢舉該帳號霸凌或洩漏個資", "留言罵人"], a: 2, exp: "散布他人隱私涉及法律責任，且助長網路霸凌。" },
+    { q: "小強為了遊戲虛寶，把帳號密碼給了代練的陌生人，這違反了什麼原則？", options: ["密碼不外洩", "電腦不關機", "軟體要更新", "資料要備份"], a: 0, exp: "帳號密碼絕不可提供給他人，否則極易被盜用或作為詐騙工具。" },
+    { q: "要把考卷發回去時，應該怎麼做比較符合個資保護？", options: ["把分數唸出來", "直接把整疊放在講台讓大家自己翻", "遮住分數發給本人", "貼在布告欄"], a: 2, exp: "分數屬於社會活動個資，應避免公開揭露，發還時應遮蔽並交給本人。" },
+    { q: "在網路上填寫問卷送珍珠奶茶，問卷要你填寫詳細地址和父母姓名，你應該？", options: ["為了珍奶趕快填", "亂填別人的資料", "思考一杯珍奶換這些個資划不划算，拒絕填寫", "填寫老師的資料"], a: 2, exp: "要具備個資價值觀，不應為了小利出賣重要個資。" }
+];
+
+// 遊戲音效
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playSound(type) {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const osc = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    osc.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    const now = audioCtx.currentTime;
+
+    if (type === 'shoot') { // 澆水聲/魔法聲
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, now);
+        osc.frequency.exponentialRampToValueAtTime(800, now + 0.2);
+        gainNode.gain.setValueAtTime(0.3, now);
+        gainNode.gain.linearRampToValueAtTime(0, now + 0.2);
+        osc.start();
+        osc.stop(now + 0.2);
+    } else if (type === 'hit') { // 受傷聲
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.linearRampToValueAtTime(100, now + 0.3);
+        gainNode.gain.setValueAtTime(0.3, now);
+        gainNode.gain.linearRampToValueAtTime(0, now + 0.3);
+        osc.start();
+        osc.stop(now + 0.3);
+    } else if (type === 'wrong') { // 錯誤聲
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(100, now);
+        gainNode.gain.setValueAtTime(0.2, now);
+        gainNode.gain.linearRampToValueAtTime(0, now + 0.3);
+        osc.start();
+        osc.stop(now + 0.3);
+    }
+}
+
+// 遊戲邏輯物件
+const game = {
+    questions: [],
+    currentQIndex: 0,
+    score: 0,
+    hp: 100,
+    maxQuestions: 20,
+    threatTypes: ['🐛', '🐌', '🦗', '🦟', '🕸️'], // 害蟲
+    plantStages: ['🌱', '🌿', '🌷', '🪴', '🌳', '🍎', '🏵️'], // 植物成長階段
+
+    // 初始化遊戲
+    start: function() {
+        this.questions = this.shuffleArray([...fullQuestionBank]).slice(0, this.maxQuestions);
+        this.currentQIndex = 0;
+        this.score = 0;
+        this.hp = 100;
+        
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('end-screen').classList.add('hidden');
+        document.getElementById('feedback-modal').classList.add('hidden');
+        
+        this.updateHUD();
+        this.updatePlant(); // 初始植物狀態
+        this.loadQuestion();
+        this.spawnEnemy();
+    },
+
+    // 載入題目
+    loadQuestion: function() {
+        const qData = this.questions[this.currentQIndex];
+        document.getElementById('question-text').textContent = `Q${this.currentQIndex + 1}: ${qData.q}`;
+        
+        const optsContainer = document.getElementById('options-container');
+        optsContainer.innerHTML = '';
+
+        qData.options.forEach((opt, idx) => {
+            const btn = document.createElement('button');
+            btn.className = 'option-btn';
+            btn.textContent = opt;
+            btn.onclick = () => this.checkAnswer(idx, btn);
+            optsContainer.appendChild(btn);
+        });
+    },
+
+    // 檢查答案
+    checkAnswer: function(selectedIndex, btnElement) {
+        const allBtns = document.querySelectorAll('.option-btn');
+        allBtns.forEach(b => b.disabled = true);
+
+        const currentQ = this.questions[this.currentQIndex];
+        const isCorrect = selectedIndex === currentQ.a;
+
+        if (isCorrect) {
+            btnElement.classList.add('correct');
+            this.handleCorrect();
+        } else {
+            btnElement.classList.add('wrong');
+            allBtns[currentQ.a].classList.add('correct');
+            this.handleWrong(currentQ);
+        }
+    },
+
+    // 答對處理 (澆水/發射養分)
+    handleCorrect: function() {
+        playSound('shoot');
+        this.score += 10;
+        
+        const bullet = document.getElementById('hero-bullet');
+        const enemy = document.getElementById('enemy');
+        const hero = document.getElementById('hero');
+        
+        bullet.textContent = '💧'; // 顯示水滴
+        bullet.style.display = 'block';
+        bullet.classList.add('shoot-anim');
+
+        // 植物成長動畫
+        hero.classList.add('grow-anim');
+
+        setTimeout(() => {
+            enemy.classList.add('hit-anim'); // 敵人受傷
+            enemy.classList.add('fade-out'); // 敵人消失
+        }, 400);
+
+        setTimeout(() => {
+            bullet.style.display = 'none';
+            bullet.classList.remove('shoot-anim');
+            enemy.classList.remove('hit-anim', 'fade-out');
+            hero.classList.remove('grow-anim');
+            
+            this.nextQuestion();
+        }, 1200);
+    },
+
+    // 答錯處理 (害蟲攻擊)
+    handleWrong: function(qData) {
+        playSound('wrong');
+        this.hp -= 20; 
+        if(this.hp < 0) this.hp = 0;
+        this.updateHUD();
+
+        const bullet = document.getElementById('enemy-bullet');
+        const hero = document.getElementById('hero');
+        
+        bullet.style.display = 'block';
+        bullet.classList.add('attack-anim');
+
+        setTimeout(() => {
+            hero.classList.add('hit-anim'); // 植物受傷搖晃
+            playSound('hit');
+        }, 400);
+
+        setTimeout(() => {
+            bullet.style.display = 'none';
+            bullet.classList.remove('attack-anim');
+            hero.classList.remove('hit-anim');
+            
+            this.showFeedback(false, qData);
+        }, 1200);
+    },
+
+    // 顯示下一題
+    nextQuestion: function() {
+        document.getElementById('feedback-modal').classList.add('hidden');
+        this.currentQIndex++;
+        
+        this.updateHUD();
+        this.updatePlant(); // 檢查是否升級植物
+
+        if (this.hp <= 0 || this.currentQIndex >= this.maxQuestions) {
+            this.endGame();
+        } else {
+            this.spawnEnemy();
+            this.loadQuestion();
+        }
+    },
+
+    // 更新植物狀態 (根據進度)
+    updatePlant: function() {
+        const hero = document.getElementById('hero');
+        // 根據目前題數決定植物階段 (0, 3, 6, 9, 12, 15, 18 題變身)
+        const stageIndex = Math.min(Math.floor(this.currentQIndex / 3), this.plantStages.length - 1);
+        hero.textContent = this.plantStages[stageIndex];
+    },
+
+    showFeedback: function(isCorrect, qData) {
+        const modal = document.getElementById('feedback-modal');
+        const title = document.getElementById('feedback-title');
+        const content = document.getElementById('explanation-text');
+        
+        title.textContent = "🐛 害蟲入侵！植物受傷了";
+        title.className = "wrong-title";
+        content.innerHTML = `<strong>正確答案：</strong> ${qData.options[qData.a]}<br><br><strong>園丁筆記：</strong><br>${qData.exp}`;
+        
+        modal.classList.remove('hidden');
+    },
+
+    spawnEnemy: function() {
+        const enemy = document.getElementById('enemy');
+        const type = this.threatTypes[Math.floor(Math.random() * this.threatTypes.length)];
+        enemy.textContent = type;
+        enemy.style.opacity = 0;
+        enemy.classList.remove('fade-out');
+        void enemy.offsetWidth; 
+        enemy.classList.add('spawn-anim');
+    },
+
+    updateHUD: function() {
+        document.getElementById('score-display').textContent = this.score;
+        document.getElementById('progress-display').textContent = `${Math.min(this.currentQIndex + 1, 20)} / 20`;
+        document.getElementById('hp-bar').style.width = `${this.hp}%`;
+    },
+
+    endGame: function() {
+        const modal = document.getElementById('end-screen');
+        const finalScore = document.getElementById('final-score');
+        const finalStats = document.getElementById('final-stats');
+        const persona = document.getElementById('persona-text');
+
+        let title = "";
+        if (this.score >= 180 && this.hp >= 80) {
+            title = "🌳 傳奇的綠手指宗師";
+        } else if (this.score >= 140 && this.hp > 0) {
+            title = "🌷 優秀的資安園丁";
+        } else if (this.hp > 0) {
+            title = "🌱 努力的種植實習生";
+        } else {
+            title = "🥀 需要重修的枯萎花園";
+        }
+
+        finalScore.textContent = `獲得養分: ${this.score}`;
+        finalStats.textContent = `植物健康度: ${this.hp}%`;
+        persona.textContent = title;
+        
+        modal.classList.remove('hidden');
+    },
+
+    shuffleArray: function(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+    }
+};
+</script>
+</body>
+</html>
