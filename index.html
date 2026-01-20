@@ -210,6 +210,33 @@
         .option-btn.correct { background: var(--success-color); border-color: #388e3c; color: white; box-shadow: 0 4px 0 #2e7d32; }
         .option-btn.wrong { background: var(--danger-color); border-color: #d32f2f; color: white; opacity: 0.8; box-shadow: 0 4px 0 #c62828; }
 
+        /* --- 輸入框樣式 (新) --- */
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+            width: 100%;
+            align-items: center;
+        }
+        
+        .student-input {
+            width: 80%;
+            max-width: 300px;
+            padding: 12px 20px;
+            font-size: 1.1rem;
+            border: 3px solid #b3e5fc;
+            border-radius: 25px;
+            outline: none;
+            transition: border-color 0.3s;
+            text-align: center;
+        }
+        
+        .student-input:focus {
+            border-color: var(--secondary-color);
+            box-shadow: 0 0 10px rgba(255, 152, 0, 0.2);
+        }
+
         /* --- 彈出視窗 (開始/結束/回饋) --- */
         .modal {
             position: absolute;
@@ -248,6 +275,12 @@
         #feedback-modal h2.wrong-title { color: var(--danger-color); }
         #explanation-text { background: #fff3e0; padding: 25px; border-radius: 15px; max-width: 80%; margin: 20px auto; border: 2px dashed var(--secondary-color); color: #5d4037; text-align: left;}
 
+        #upload-status {
+            font-size: 1rem;
+            margin-top: 15px;
+            color: #888;
+        }
+
     </style>
 </head>
 <body>
@@ -284,11 +317,18 @@
         </div>
     </div>
 
-    <!-- 1. 開始畫面 -->
+    <!-- 1. 開始畫面 (新增輸入欄位) -->
     <div id="start-screen" class="modal">
         <h1>🌱 資安小園丁</h1>
         <h2>數據灌溉計畫</h2>
-        <p>歡迎來到數據花園！<br>這裡有些討厭的「數位害蟲」想偷吃資料。<br>運用你的資安知識灌溉種子，讓它長成大樹吧！</p>
+        <p>歡迎來到數據花園！請先輸入你的資料：</p>
+        
+        <div class="input-group">
+            <input type="text" id="student-class" class="student-input" placeholder="班級 (例如: 801)">
+            <input type="text" id="student-seat" class="student-input" placeholder="座號 (例如: 05)">
+            <input type="text" id="student-name" class="student-input" placeholder="姓名 (例如: 王小明)">
+        </div>
+
         <button class="start-btn" onclick="game.start()">開始種植</button>
     </div>
 
@@ -304,14 +344,23 @@
         <h1>花園驗收</h1>
         <h2 id="final-score">獲得養分: 0</h2>
         <p id="final-stats">植物健康度: 0%</p>
-        <div id="persona-text" style="font-size: 1.5rem; color: var(--success-color); font-weight: bold; margin-bottom: 30px;">
+        <div id="persona-text" style="font-size: 1.5rem; color: var(--success-color); font-weight: bold; margin-bottom: 20px;">
             稱號評估中...
         </div>
-        <button class="start-btn" onclick="game.start()">再種一次</button>
+        <div id="upload-status">成績上傳準備中...</div>
+        <br>
+        <button class="start-btn" onclick="location.reload()">再種一次</button>
     </div>
 </div>
 
 <script>
+// =========================================================
+// 【重要】請將 Google Apps Script 發布後的網頁應用程式網址貼在這裡
+//  若未填寫，將無法送出成績到試算表
+// =========================================================
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxIz7hRx9buxcfXFoWK6wiJREpIc_QUnZEmUf3PQ7Ohg6PM8VkKRaLU9VzYKtb03ko/exec'; 
+// 例如: 'https://script.google.com/macros/s/AKfycbx.../exec'
+
 /* 【題庫設計】 (保持原題庫，內容不變) */
 const fullQuestionBank = [
     // --- A. 什麼是個人資料 (8) ---
@@ -416,22 +465,39 @@ const game = {
     score: 0,
     hp: 100,
     maxQuestions: 20,
-    threatTypes: ['🐛', '🐌', '🦗', '🦟', '🕸️'], // 害蟲
-    plantStages: ['🌱', '🌿', '🌷', '🪴', '🌳', '🍎', '🏵️'], // 植物成長階段
+    threatTypes: ['🐛', '🐌', '🦗', '🦟', '🕸️'], 
+    plantStages: ['🌱', '🌿', '🌷', '🪴', '🌳', '🍎', '🏵️'],
+    studentInfo: { class: '', seat: '', name: '' },
+    answerLog: [], // 紀錄作答明細
 
     // 初始化遊戲
     start: function() {
+        // 1. 驗證學生輸入
+        const sClass = document.getElementById('student-class').value.trim();
+        const sSeat = document.getElementById('student-seat').value.trim();
+        const sName = document.getElementById('student-name').value.trim();
+
+        if (!sClass || !sSeat || !sName) {
+            alert("請完整填寫 班級、座號、姓名 才能開始遊戲喔！");
+            return;
+        }
+
+        this.studentInfo = { class: sClass, seat: sSeat, name: sName };
+        
+        // 2. 初始化變數
         this.questions = this.shuffleArray([...fullQuestionBank]).slice(0, this.maxQuestions);
         this.currentQIndex = 0;
         this.score = 0;
         this.hp = 100;
+        this.answerLog = [];
         
+        // 3. UI 更新
         document.getElementById('start-screen').classList.add('hidden');
         document.getElementById('end-screen').classList.add('hidden');
         document.getElementById('feedback-modal').classList.add('hidden');
         
         this.updateHUD();
-        this.updatePlant(); // 初始植物狀態
+        this.updatePlant();
         this.loadQuestion();
         this.spawnEnemy();
     },
@@ -461,6 +527,13 @@ const game = {
         const currentQ = this.questions[this.currentQIndex];
         const isCorrect = selectedIndex === currentQ.a;
 
+        // 紀錄作答 (Q:題目, A:學生選的答案, R:結果)
+        this.answerLog.push({
+            q: currentQ.q,
+            a: currentQ.options[selectedIndex],
+            r: isCorrect ? 'O' : 'X'
+        });
+
         if (isCorrect) {
             btnElement.classList.add('correct');
             this.handleCorrect();
@@ -471,7 +544,7 @@ const game = {
         }
     },
 
-    // 答對處理 (澆水/發射養分)
+    // 答對處理
     handleCorrect: function() {
         playSound('shoot');
         this.score += 10;
@@ -480,16 +553,15 @@ const game = {
         const enemy = document.getElementById('enemy');
         const hero = document.getElementById('hero');
         
-        bullet.textContent = '💧'; // 顯示水滴
+        bullet.textContent = '💧'; 
         bullet.style.display = 'block';
         bullet.classList.add('shoot-anim');
 
-        // 植物成長動畫
         hero.classList.add('grow-anim');
 
         setTimeout(() => {
-            enemy.classList.add('hit-anim'); // 敵人受傷
-            enemy.classList.add('fade-out'); // 敵人消失
+            enemy.classList.add('hit-anim');
+            enemy.classList.add('fade-out');
         }, 400);
 
         setTimeout(() => {
@@ -502,7 +574,7 @@ const game = {
         }, 1200);
     },
 
-    // 答錯處理 (害蟲攻擊)
+    // 答錯處理
     handleWrong: function(qData) {
         playSound('wrong');
         this.hp -= 20; 
@@ -516,7 +588,7 @@ const game = {
         bullet.classList.add('attack-anim');
 
         setTimeout(() => {
-            hero.classList.add('hit-anim'); // 植物受傷搖晃
+            hero.classList.add('hit-anim'); 
             playSound('hit');
         }, 400);
 
@@ -535,7 +607,7 @@ const game = {
         this.currentQIndex++;
         
         this.updateHUD();
-        this.updatePlant(); // 檢查是否升級植物
+        this.updatePlant(); 
 
         if (this.hp <= 0 || this.currentQIndex >= this.maxQuestions) {
             this.endGame();
@@ -545,10 +617,8 @@ const game = {
         }
     },
 
-    // 更新植物狀態 (根據進度)
     updatePlant: function() {
         const hero = document.getElementById('hero');
-        // 根據目前題數決定植物階段 (0, 3, 6, 9, 12, 15, 18 題變身)
         const stageIndex = Math.min(Math.floor(this.currentQIndex / 3), this.plantStages.length - 1);
         hero.textContent = this.plantStages[stageIndex];
     },
@@ -586,6 +656,7 @@ const game = {
         const finalScore = document.getElementById('final-score');
         const finalStats = document.getElementById('final-stats');
         const persona = document.getElementById('persona-text');
+        const uploadStatus = document.getElementById('upload-status');
 
         let title = "";
         if (this.score >= 180 && this.hp >= 80) {
@@ -603,6 +674,54 @@ const game = {
         persona.textContent = title;
         
         modal.classList.remove('hidden');
+        
+        // 傳送資料到 Google Sheets
+        this.sendToGoogleSheet(uploadStatus);
+    },
+
+    sendToGoogleSheet: function(statusElement) {
+        if (!GOOGLE_SCRIPT_URL) {
+            statusElement.textContent = "⚠️ 教師未設定 Google Script 網址，無法上傳成績。";
+            statusElement.style.color = "red";
+            return;
+        }
+
+        statusElement.textContent = "正在上傳成績...";
+        
+        // 格式化作答紀錄為字串
+        const logString = this.answerLog.map((item, i) => 
+            `${i+1}. [${item.r}] ${item.q} (答:${item.a})`
+        ).join('\n');
+
+        const payload = {
+            class: this.studentInfo.class,
+            seat: this.studentInfo.seat,
+            name: this.studentInfo.name,
+            score: this.score,
+            log: logString
+        };
+
+        // 使用 fetch 送出 POST 請求
+        // mode: 'no-cors' 是關鍵，因為 Google Script 不會回傳標準 CORS header
+        fetch(GOOGLE_SCRIPT_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            cache: 'no-cache',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            redirect: 'follow',
+            body: JSON.stringify(payload)
+        })
+        .then(() => {
+            statusElement.textContent = "✅ 成績上傳成功！";
+            statusElement.style.color = "green";
+        })
+        .catch(err => {
+            console.error(err);
+            statusElement.textContent = "❌ 上傳失敗，請檢查網路或通知老師。";
+            statusElement.style.color = "red";
+        });
     },
 
     shuffleArray: function(array) {
@@ -613,6 +732,38 @@ const game = {
         return array;
     }
 };
+
+/* ================================================================================
+【教師設定區：Google Apps Script 程式碼】
+請將以下程式碼複製到您的 Google Sheet > 擴充功能 > Apps Script 中
+並部署為「網頁應用程式」，將產生的 URL 貼回上方的 GOOGLE_SCRIPT_URL 變數中。
+================================================================================
+
+function doPost(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheets()[0]; // 取得第一個工作表
+  
+  // 若是第一次使用，建立標題列
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(["時間戳記", "班級", "座號", "姓名", "分數", "作答紀錄"]);
+  }
+
+  var data = JSON.parse(e.postData.contents);
+  var timestamp = new Date();
+  
+  sheet.appendRow([
+    timestamp,
+    data.class,
+    data.seat,
+    data.name,
+    data.score,
+    data.log
+  ]);
+  
+  return ContentService.createTextOutput("Success");
+}
+================================================================================
+*/
 </script>
 </body>
 </html>
